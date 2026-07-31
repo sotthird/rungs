@@ -4,10 +4,11 @@ changes to core.py, sequential.py, or policies.py. See DESIGN.md §12a,
 IMPLEMENTATION.md §11.
 """
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from rungs.core import Result
+from rungs.core import Result, Rung
 from rungs.domains.knapsack import KnapsackInstance, generate_instance
 from rungs.domains.knapsack_features import cheap_lower_bound, features
 from rungs.domains.knapsack_solvers import solve_exact, solve_greedy, solve_medium
@@ -16,7 +17,7 @@ from rungs.domains.knapsack_solvers import solve_exact, solve_greedy, solve_medi
 @dataclass(frozen=True)
 class _SolverRung:
     name: str
-    _solve_fn: Any
+    _solve_fn: Callable[[KnapsackInstance], Result]
 
     def solve(self, instance: KnapsackInstance) -> Result:
         return self._solve_fn(instance)
@@ -44,10 +45,10 @@ class KnapsackDomain:
     def features(self, instance: KnapsackInstance) -> dict[str, float]:
         return features(instance)
 
-    def rungs(self) -> list[_SolverRung]:
+    def rungs(self) -> Sequence[Rung]:
         return self._rungs
 
-    def ground_truth_rung(self) -> _SolverRung:
+    def ground_truth_rung(self) -> Rung:
         return self._rungs[-1]
 
     def cheap_lower_bound(self, instance: KnapsackInstance) -> float:

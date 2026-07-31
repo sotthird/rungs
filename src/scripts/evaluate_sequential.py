@@ -41,7 +41,9 @@ def five_fold_assignment(n: int, seed: int, k: int) -> np.ndarray:
 def load_wide_cache() -> pl.DataFrame:
     df = pl.read_parquet(CACHE_PATH)
     metrics = df.pivot(
-        on="rung", index="instance_id", values=["quality_gap", "solve_time", "objective", "feasible"]
+        on="rung",
+        index="instance_id",
+        values=["quality_gap", "solve_time", "objective", "feasible"],
     ).sort("instance_id")
     feats = (
         df.select(["instance_id", "cheap_lower_bound", "tightness"])
@@ -141,8 +143,12 @@ def run_cv(metrics_list, context_list, fold_of, cv_folds, lambda_, make_buckets,
 
 
 def report_bucket_occupancy(tables, train_metrics, train_context, label):
-    s1_counts = Counter(tables.bucket_s1(m, c) for m, c in zip(train_metrics, train_context, strict=True))
-    s2_counts = Counter(tables.bucket_s2(m, c) for m, c in zip(train_metrics, train_context, strict=True))
+    s1_counts = Counter(
+        tables.bucket_s1(m, c) for m, c in zip(train_metrics, train_context, strict=True)
+    )
+    s2_counts = Counter(
+        tables.bucket_s2(m, c) for m, c in zip(train_metrics, train_context, strict=True)
+    )
     print(f"  [{label}] s1 bucket occupancy (one representative fold): {dict(s1_counts)}")
     print(f"  [{label}] s2 bucket occupancy (one representative fold): {dict(s2_counts)}")
 
@@ -172,14 +178,16 @@ def main() -> None:
         shares = {r: counts.get(r, 0) / n for r in ["greedy", "medium", "exact"]}
         diversity_by_lambda[lam] = 1.0 - max(shares.values())  # 0 = degenerate, higher = more mixed
         shares_str = ", ".join(f"{r}={s:.0%}" for r, s in shares.items())
-        print(f"  lambda={lam:>6}: gap={g.mean():.4f}  time={t.mean():.5f}s  endpoints: {shares_str}")
+        print(
+            f"  lambda={lam:>6}: gap={g.mean():.4f}  time={t.mean():.5f}s  endpoints: {shares_str}"
+        )
 
     # The mid-of-grid lambda (used for the Phase 3 Pareto plot) can land in a
     # degenerate "always escalate" regime where full and ablation are
     # identical by construction — not informative for isolating the value of
     # purchased evidence. Use the lambda with the most three-way-mixed
     # endpoints instead: that's where escalation decisions actually differ.
-    ablation_lambda = max(diversity_by_lambda, key=diversity_by_lambda.get)
+    ablation_lambda = max(diversity_by_lambda, key=lambda lam: diversity_by_lambda[lam])
     print(
         f"\nMost mixed lambda={ablation_lambda} (endpoint diversity={diversity_by_lambda[ablation_lambda]:.2f}) "
         "chosen for the full-vs-ablation comparison below.\n"
@@ -187,26 +195,44 @@ def main() -> None:
 
     print(f"Full evaluation at lambda={ablation_lambda}:")
     full_gap, full_time, full_path_end, tables, tm, tc = run_cv(
-        metrics_list, lb_list, fold_of, cv_folds, ablation_lambda, make_full_buckets, MIN_BUCKET_SIZE
+        metrics_list,
+        lb_list,
+        fold_of,
+        cv_folds,
+        ablation_lambda,
+        make_full_buckets,
+        MIN_BUCKET_SIZE,
     )
     report_bucket_occupancy(tables, tm, tc, "full")
     print(f"  full policy: mean gap={full_gap.mean():.4f}  mean time={full_time.mean():.5f}s")
     print(f"  path endpoints: {dict(Counter(full_path_end))}\n")
 
     ablation_gap, ablation_time, ablation_path_end, ab_tables, ab_tm, ab_tc = run_cv(
-        metrics_list, tightness_list, fold_of, cv_folds, ablation_lambda, make_ablation_buckets, MIN_BUCKET_SIZE
+        metrics_list,
+        tightness_list,
+        fold_of,
+        cv_folds,
+        ablation_lambda,
+        make_ablation_buckets,
+        MIN_BUCKET_SIZE,
     )
     report_bucket_occupancy(ab_tables, ab_tm, ab_tc, "ablation (features-only)")
-    print(f"  ablation policy: mean gap={ablation_gap.mean():.4f}  mean time={ablation_time.mean():.5f}s")
+    print(
+        f"  ablation policy: mean gap={ablation_gap.mean():.4f}  mean time={ablation_time.mean():.5f}s"
+    )
     print(f"  path endpoints: {dict(Counter(ablation_path_end))}\n")
 
     # Cost-accounting sanity check on the actual cache (not just the unit test).
     path_order = ["greedy", "medium", "exact"]
     for i in range(n):
         rung = full_path_end[i]
-        expected_time = sum(metrics_list[i][r].solve_time for r in path_order[: path_order.index(rung) + 1])
+        expected_time = sum(
+            metrics_list[i][r].solve_time for r in path_order[: path_order.index(rung) + 1]
+        )
         assert abs(expected_time - full_time[i]) < 1e-9, f"cost accounting mismatch at instance {i}"
-    print("Cost-accounting check passed: total_time matches sum of solve_time over the actual path taken.\n")
+    print(
+        "Cost-accounting check passed: total_time matches sum of solve_time over the actual path taken.\n"
+    )
 
     print("Value of purchased information (full - ablation, negative = full is better):")
     print(f"  gap difference:  {full_gap.mean() - ablation_gap.mean():+.4f}")
@@ -214,7 +240,12 @@ def main() -> None:
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 5))
     for ax, (label, gap, time) in zip(
-        axes, [("full (observed outcomes)", full_gap, full_time), ("ablation (features-only)", ablation_gap, ablation_time)], strict=True
+        axes,
+        [
+            ("full (observed outcomes)", full_gap, full_time),
+            ("ablation (features-only)", ablation_gap, ablation_time),
+        ],
+        strict=True,
     ):
         ax.scatter(time, gap, alpha=0.3, s=15)
         ax.set_xscale("log")
@@ -222,7 +253,9 @@ def main() -> None:
         ax.set_ylabel("quality gap")
         ax.set_title(label)
         ax.grid(True, which="both", alpha=0.3)
-    fig.suptitle(f"Sequential escalation: value of purchased information (lambda={ablation_lambda})")
+    fig.suptitle(
+        f"Sequential escalation: value of purchased information (lambda={ablation_lambda})"
+    )
     FIGURES_DIR.mkdir(exist_ok=True)
     out_path = FIGURES_DIR / "sequential_ablation.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight")

@@ -34,7 +34,7 @@ def generate_dataset(
     capacity_ratio_range: tuple[float, float],
     is_valid,
 ) -> list[KnapsackInstance]:
-    dataset = []
+    dataset: list[KnapsackInstance] = []
     while len(dataset) < n_instances:
         inst = generate_instance(rng, n_items=n_items, capacity_ratio_range=capacity_ratio_range)
         if is_valid(inst):

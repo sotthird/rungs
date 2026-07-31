@@ -50,9 +50,9 @@ def five_fold_assignment(n: int, seed: int, k: int) -> np.ndarray:
 
 def load_wide_cache() -> pl.DataFrame:
     df = pl.read_parquet(CACHE_PATH)
-    metrics = df.pivot(
-        on="rung", index="instance_id", values=["quality_gap", "solve_time"]
-    ).sort("instance_id")
+    metrics = df.pivot(on="rung", index="instance_id", values=["quality_gap", "solve_time"]).sort(
+        "instance_id"
+    )
     feats = (
         df.select(["instance_id", *FEATURE_COLUMNS])
         .unique(subset=["instance_id"])
@@ -111,7 +111,7 @@ def main() -> None:
     oracle_time = np.empty(n)
     for i in range(n):
         losses = {r: loss(gaps[r][i], times[r][i], mid_lambda) for r in RUNG_NAMES}
-        best = min(losses, key=losses.get)
+        best = min(losses, key=lambda r: losses[r])
         oracle_gap[i] = gaps[best][i]
         oracle_time[i] = times[best][i]
     results["oracle"] = (oracle_gap.mean(), oracle_time.mean())

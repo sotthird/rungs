@@ -10,10 +10,8 @@ EXACT_TIME_LIMIT_S = 5.0
 
 
 def _transport_cost_matrix(inst: FLInstance) -> np.ndarray:
-    dist = np.linalg.norm(
-        inst.site_xy[:, None, :] - inst.cust_xy[None, :, :], axis=-1
-    )
-    return dist * inst.demand[None, :]
+    dist = np.linalg.norm(inst.site_xy[:, None, :] - inst.cust_xy[None, :, :], axis=-1)
+    return np.asarray(dist * inst.demand[None, :])
 
 
 def solve_exact(inst: FLInstance) -> Result:
@@ -27,9 +25,7 @@ def solve_exact(inst: FLInstance) -> Result:
         "x", [(i, j) for i in range(n_sites) for j in range(n_cust)], cat="Binary"
     )
 
-    prob += pulp.lpSum(
-        inst.fixed_cost[i] * y[i] for i in range(n_sites)
-    ) + pulp.lpSum(
+    prob += pulp.lpSum(inst.fixed_cost[i] * y[i] for i in range(n_sites)) + pulp.lpSum(
         cost[i, j] * x[i, j] for i in range(n_sites) for j in range(n_cust)
     )
 
@@ -38,8 +34,7 @@ def solve_exact(inst: FLInstance) -> Result:
 
     for i in range(n_sites):
         prob += (
-            pulp.lpSum(inst.demand[j] * x[i, j] for j in range(n_cust))
-            <= inst.capacity[i] * y[i]
+            pulp.lpSum(inst.demand[j] * x[i, j] for j in range(n_cust)) <= inst.capacity[i] * y[i]
         )
 
     # Disaggregated linking constraint: tightens the LP relaxation dramatically
@@ -57,16 +52,11 @@ def solve_exact(inst: FLInstance) -> Result:
     # feasible incumbent exists" to LpStatusOptimal too. The real optimality
     # signal is sol_status == LpSolutionOptimal (as opposed to
     # LpSolutionIntegerFeasible, i.e. a time-limited incumbent).
-    if (
-        prob.status != pulp.LpStatusOptimal
-        or prob.sol_status != pulp.LpSolutionOptimal
-    ):
+    if prob.status != pulp.LpStatusOptimal or prob.sol_status != pulp.LpSolutionOptimal:
         return Result(objective=None, feasible=False, solve_time=solve_time)
 
     y_val = np.array([y[i].value() for i in range(n_sites)])
-    x_val = np.array(
-        [[x[i, j].value() for j in range(n_cust)] for i in range(n_sites)]
-    )
+    x_val = np.array([[x[i, j].value() for j in range(n_cust)] for i in range(n_sites)])
     return Result(
         objective=pulp.value(prob.objective),
         feasible=True,
@@ -88,9 +78,7 @@ def _greedy_assign(
     cust_order = np.argsort(-inst.demand)
     for j in cust_order:
         candidates = [
-            i
-            for i in range(n_sites)
-            if open_sites[i] and remaining_capacity[i] >= inst.demand[j]
+            i for i in range(n_sites) if open_sites[i] and remaining_capacity[i] >= inst.demand[j]
         ]
         if not candidates:
             feasible = False
@@ -118,9 +106,7 @@ def solve_medium(inst: FLInstance) -> Result:
         "x", [(i, j) for i in range(n_sites) for j in range(n_cust)], lowBound=0, upBound=1
     )
 
-    prob += pulp.lpSum(
-        inst.fixed_cost[i] * y[i] for i in range(n_sites)
-    ) + pulp.lpSum(
+    prob += pulp.lpSum(inst.fixed_cost[i] * y[i] for i in range(n_sites)) + pulp.lpSum(
         cost[i, j] * x[i, j] for i in range(n_sites) for j in range(n_cust)
     )
 
@@ -129,8 +115,7 @@ def solve_medium(inst: FLInstance) -> Result:
 
     for i in range(n_sites):
         prob += (
-            pulp.lpSum(inst.demand[j] * x[i, j] for j in range(n_cust))
-            <= inst.capacity[i] * y[i]
+            pulp.lpSum(inst.demand[j] * x[i, j] for j in range(n_cust)) <= inst.capacity[i] * y[i]
         )
 
     start = perf_counter()
@@ -167,11 +152,10 @@ def solve_greedy(inst: FLInstance) -> Result:
         if not closed:
             break
         scores = {
-            i: inst.capacity[i]
-            / (inst.fixed_cost[i] + mean_transport_to_unserved[i])
+            i: inst.capacity[i] / (inst.fixed_cost[i] + mean_transport_to_unserved[i])
             for i in closed
         }
-        best = max(scores, key=scores.get)
+        best = max(scores, key=lambda i: scores[i])
         open_sites[best] = 1.0
         closed.remove(best)
 

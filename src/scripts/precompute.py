@@ -73,7 +73,9 @@ def main() -> None:
     feature_times = []
     for instance_id, (inst, exact_result) in enumerate(zip(dataset, exact_results, strict=True)):
         if exact_result.solve_time > 0.9 * 5.0:
-            print(f"  warning: instance {instance_id} exact solve took {exact_result.solve_time:.2f}s, near the time limit")
+            print(
+                f"  warning: instance {instance_id} exact solve took {exact_result.solve_time:.2f}s, near the time limit"
+            )
 
         feat_start = time.perf_counter()
         feats = domain.features(inst)
@@ -101,15 +103,19 @@ def main() -> None:
                 }
             )
         if (instance_id + 1) % 100 == 0:
-            print(f"  solved {instance_id + 1}/{len(dataset)} ({time.perf_counter() - start:.1f}s elapsed)")
+            print(
+                f"  solved {instance_id + 1}/{len(dataset)} ({time.perf_counter() - start:.1f}s elapsed)"
+            )
 
     df = pl.DataFrame(rows)
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(CACHE_PATH)
 
     total_time = time.perf_counter() - start
-    max_exact_time = df.filter(pl.col("rung") == exact_rung.name)["solve_time"].max()
-    median_greedy_time = df.filter(pl.col("rung") == "greedy")["solve_time"].median()
+    # polars' Series.max()/median() are typed as a broad literal union covering
+    # every possible dtype (not just numeric) — this column is always float.
+    max_exact_time = float(df.filter(pl.col("rung") == exact_rung.name)["solve_time"].max())  # type: ignore[arg-type]
+    median_greedy_time = float(df.filter(pl.col("rung") == "greedy")["solve_time"].median())  # type: ignore[arg-type]
     median_feature_time = float(np.median(feature_times))
     print(f"Wrote {len(df)} rows to {CACHE_PATH} in {total_time:.1f}s total")
     print(f"Max exact solve time among kept instances: {max_exact_time:.3f}s")

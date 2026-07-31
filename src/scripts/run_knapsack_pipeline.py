@@ -48,8 +48,8 @@ MARKERS = {
 }
 
 
-def quality_gap(objective, feasible, obj_exact) -> float:
-    if not feasible:
+def quality_gap(objective: float | None, feasible: bool, obj_exact: float) -> float:
+    if not feasible or objective is None:
         return 1.0
     return (obj_exact - objective) / obj_exact  # maximize: worse = below exact
 
@@ -69,40 +69,51 @@ def main() -> None:
     # Solve every rung on every test instance once (cache-style) — including
     # exact, whose per-instance objective is reused below to score both
     # policies without ever re-solving.
-    exact_objectives = []
-    gaps = {r: [] for r in rung_names}
-    times = {r: [] for r in rung_names}
+    exact_objectives: list[float] = []
+    gap_lists: dict[str, list[float]] = {r: [] for r in rung_names}
+    time_lists: dict[str, list[float]] = {r: [] for r in rung_names}
     for inst in test_instances:
         exact_result = exact_rung.solve(inst)
+        assert exact_result.objective is not None
         exact_objectives.append(exact_result.objective)
         for rung in domain.rungs():
-            result = exact_result if rung.name == exact_rung.name else rung.solve(inst)
-            gaps[rung.name].append(quality_gap(result.objective, result.feasible, exact_result.objective))
-            times[rung.name].append(result.solve_time)
-    gaps = {r: np.array(v) for r, v in gaps.items()}
-    times = {r: np.array(v) for r, v in times.items()}
+            solve_result = exact_result if rung.name == exact_rung.name else rung.solve(inst)
+            gap_lists[rung.name].append(
+                quality_gap(solve_result.objective, solve_result.feasible, exact_result.objective)
+            )
+            time_lists[rung.name].append(solve_result.solve_time)
+    gaps: dict[str, np.ndarray] = {r: np.array(v) for r, v in gap_lists.items()}
+    times: dict[str, np.ndarray] = {r: np.array(v) for r, v in time_lists.items()}
 
-    print(f"{'lambda':>8}  {'policy':>12}  {'mean_gap':>10}  {'mean_time':>12}  {'gain_fraction':>14}")
+    print(
+        f"{'lambda':>8}  {'policy':>12}  {'mean_gap':>10}  {'mean_time':>12}  {'gain_fraction':>14}"
+    )
 
-    headroom_by_lambda = {}
-    gain_by_lambda = {}  # lambda -> {"one_shot": g, "sequential": g}
-    policy_points_by_lambda = {}  # lambda -> {"one_shot": (gap, time), "sequential": (gap, time)}
+    headroom_by_lambda: dict[float, float] = {}
+    gain_by_lambda: dict[float, dict[str, float]] = {}
+    policy_points_by_lambda: dict[float, dict[str, tuple[float, float]]] = {}
 
     for lam in LAMBDA_GRID:
-        best_fixed = min(loss(gaps[r], times[r], lam).mean() for r in rung_names)
-        oracle_loss = np.minimum.reduce([loss(gaps[r], times[r], lam) for r in rung_names]).mean()
+        best_fixed = min(float(loss(gaps[r], times[r], lam).mean()) for r in rung_names)
+        oracle_loss = float(
+            np.minimum.reduce([loss(gaps[r], times[r], lam) for r in rung_names]).mean()
+        )
         headroom_pct = (best_fixed - oracle_loss) / best_fixed if best_fixed > 0 else 0.0
         headroom_by_lambda[lam] = headroom_pct
         meaningful = headroom_pct >= HEADROOM_THRESHOLD
 
         for r in rung_names:
-            print(f"{lam:>8}  {'always_' + r:>12}  {gaps[r].mean():>10.4f}  {times[r].mean():>12.6f}")
+            print(
+                f"{lam:>8}  {'always_' + r:>12}  {gaps[r].mean():>10.4f}  {times[r].mean():>12.6f}"
+            )
         print(
             f"{lam:>8}  {'oracle':>12}  {'-':>10}  {'-':>12}  "
             f"(best_fixed={best_fixed:.4f}, oracle_loss={oracle_loss:.4f}, headroom={headroom_pct:.1%})"
         )
         if not meaningful:
-            print(f"{lam:>8}  -- below {HEADROOM_THRESHOLD:.0%} headroom threshold; gain_fraction not meaningful, skipping --")
+            print(
+                f"{lam:>8}  -- below {HEADROOM_THRESHOLD:.0%} headroom threshold; gain_fraction not meaningful, skipping --"
+            )
             print()
             continue
 
@@ -112,20 +123,25 @@ def main() -> None:
             alloc = Allocator(domain, lambda_=lam, mode=mode)
             alloc.fit(train_instances)
 
-            policy_gaps = []
-            policy_times = []
+            policy_gap_values: list[float] = []
+            policy_time_values: list[float] = []
             for inst, exact_obj in zip(test_instances, exact_objectives, strict=True):
-                result = alloc.solve(inst)
-                policy_gaps.append(quality_gap(result.objective, result.feasible, exact_obj))
-                policy_times.append(result.total_time)
-            policy_gaps = np.array(policy_gaps)
-            policy_times = np.array(policy_times)
+                alloc_result = alloc.solve(inst)
+                policy_gap_values.append(
+                    quality_gap(alloc_result.objective, alloc_result.feasible, exact_obj)
+                )
+                policy_time_values.append(alloc_result.total_time)
+            policy_gaps = np.array(policy_gap_values)
+            policy_times = np.array(policy_time_values)
 
-            policy_loss = loss(policy_gaps, policy_times, lam).mean()
+            policy_loss = float(loss(policy_gaps, policy_times, lam).mean())
             headroom = best_fixed - oracle_loss
             gain = 0.0 if headroom <= 0 else (best_fixed - policy_loss) / headroom
             gain_by_lambda[lam][mode] = gain
-            policy_points_by_lambda[lam][mode] = (policy_gaps.mean(), policy_times.mean())
+            policy_points_by_lambda[lam][mode] = (
+                float(policy_gaps.mean()),
+                float(policy_times.mean()),
+            )
             print(
                 f"{lam:>8}  {mode:>12}  {policy_gaps.mean():>10.4f}  "
                 f"{policy_times.mean():>12.6f}  {gain:>+14.3f}"
@@ -143,7 +159,9 @@ def main() -> None:
     # caught up yet) or the largest lambda (where microsecond-scale timing
     # noise can push gain fraction above 1, an artifact discussed in the
     # README, not a real result worth featuring in the headline figure).
-    positive_seq_lambdas = [lam for lam in meaningful_lambdas if gain_by_lambda[lam]["sequential"] > 0]
+    positive_seq_lambdas = [
+        lam for lam in meaningful_lambdas if gain_by_lambda[lam]["sequential"] > 0
+    ]
     figure_lambda = (
         min(positive_seq_lambdas)
         if positive_seq_lambdas
@@ -152,13 +170,15 @@ def main() -> None:
     print(f"Using lambda={figure_lambda} for the Pareto figure.\n")
 
     # --- Pareto frontier ---
-    points = {f"always_{r}": (gaps[r].mean(), times[r].mean()) for r in rung_names}
+    points: dict[str, tuple[float, float]] = {
+        f"always_{r}": (float(gaps[r].mean()), float(times[r].mean())) for r in rung_names
+    }
     oracle_choice = np.argmin(
         np.stack([loss(gaps[r], times[r], figure_lambda) for r in rung_names]), axis=0
     )
     oracle_gap = np.array([gaps[rung_names[c]][i] for i, c in enumerate(oracle_choice)])
     oracle_time = np.array([times[rung_names[c]][i] for i, c in enumerate(oracle_choice)])
-    points["oracle"] = (oracle_gap.mean(), oracle_time.mean())
+    points["oracle"] = (float(oracle_gap.mean()), float(oracle_time.mean()))
     points.update(policy_points_by_lambda[figure_lambda])
 
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -195,7 +215,9 @@ def main() -> None:
     ax.set_xscale("log")
     ax.set_xlabel("lambda (log scale)")
     ax.set_ylabel("gain fraction (0=best fixed, 1=oracle)")
-    ax.set_title("Knapsack: gain fraction vs lambda\n(only lambdas with >=5% oracle headroom shown)")
+    ax.set_title(
+        "Knapsack: gain fraction vs lambda\n(only lambdas with >=5% oracle headroom shown)"
+    )
     ax.axhline(0, color="grey", linewidth=0.5)
     ax.legend()
     ax.grid(True, alpha=0.3)

@@ -1,3 +1,7 @@
+import numpy as np
+import numpy.typing as npt
+
+
 def quality_gap(
     objective: float | None, feasible: bool, obj_exact: float, gap_infeasible: float
 ) -> float:
@@ -6,7 +10,9 @@ def quality_gap(
     return (objective - obj_exact) / obj_exact
 
 
-def loss(gap: float, solve_time: float, lambda_: float) -> float:
+def loss[Numeric: (float, npt.NDArray[np.floating])](
+    gap: Numeric, solve_time: Numeric, lambda_: float
+) -> Numeric:
     return gap + lambda_ * solve_time
 
 

@@ -17,7 +17,7 @@ class FLInstance:
 def _sample_tightness(rng: np.random.Generator, tightness_range: tuple[float, float]) -> float:
     lo, hi = tightness_range
     u = rng.uniform(0.0, 1.0)
-    return lo + (hi - lo) * u**2.5
+    return float(lo + (hi - lo) * u**2.5)
 
 
 def _sample_customer_positions(rng: np.random.Generator, n_customers: int) -> np.ndarray:
@@ -54,9 +54,7 @@ def generate_instance(
     capacity_shares = rng.dirichlet(np.full(n_sites, 5.0))
     capacity = capacity_shares * total_capacity
 
-    site_cust_dist = np.linalg.norm(
-        site_xy[:, None, :] - cust_xy[None, :, :], axis=-1
-    )
+    site_cust_dist = np.linalg.norm(site_xy[:, None, :] - cust_xy[None, :, :], axis=-1)
     mean_nearest_dist = site_cust_dist.min(axis=0).mean()
     mean_transport_cost = mean_nearest_dist * demand.mean()
     mean_fixed_cost = fixed_transport_ratio * mean_transport_cost
@@ -94,7 +92,7 @@ def generate_dataset(
     exact ground truth (is_valid = "exact rung proved optimality"), without
     silently accepting an instance the exact solver couldn't verify.
     """
-    dataset = []
+    dataset: list[FLInstance] = []
     while len(dataset) < n_instances:
         inst = generate_instance(
             rng,

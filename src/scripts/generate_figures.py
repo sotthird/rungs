@@ -71,7 +71,9 @@ def five_fold_assignment(n: int, seed: int, k: int) -> np.ndarray:
 def load_wide_cache() -> pl.DataFrame:
     df = pl.read_parquet(CACHE_PATH)
     metrics = df.pivot(
-        on="rung", index="instance_id", values=["quality_gap", "solve_time", "objective", "feasible"]
+        on="rung",
+        index="instance_id",
+        values=["quality_gap", "solve_time", "objective", "feasible"],
     ).sort("instance_id")
     feats = (
         df.select(["instance_id", "cheap_lower_bound", *FEATURE_COLUMNS])
@@ -159,7 +161,7 @@ def main() -> None:
                 t[i] = times[choice][i]
         return g, t
 
-    def sequential_gap_time(lam: float) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    def sequential_gap_time(lam: float) -> tuple[np.ndarray, np.ndarray, list[str | None]]:
         g = np.empty(n)
         t = np.empty(n)
         path_end: list[str | None] = [None] * n
@@ -226,8 +228,8 @@ def main() -> None:
             for fold in range(cv_folds):
                 idx = np.where(fold_of == fold)[0]
                 bf, oc = best_fixed_and_oracle(lam, idx)
-                os_loss = loss(os_gap[idx], os_time[idx], lam).mean()
-                seq_loss = loss(seq_gap[idx], seq_time[idx], lam).mean()
+                os_loss = float(loss(os_gap[idx], os_time[idx], lam).mean())
+                seq_loss = float(loss(seq_gap[idx], seq_time[idx], lam).mean())
                 os_fold_gains.append(gain_fraction(bf, os_loss, oc))
                 seq_fold_gains.append(gain_fraction(bf, seq_loss, oc))
 
@@ -241,7 +243,7 @@ def main() -> None:
         else:
             print(f"{lam:>8}  {headroom_pct:>9.1%}  {'N/A (no exploitable headroom)':>18}")
 
-    figure_lambda = max(diversity_by_lambda, key=diversity_by_lambda.get)
+    figure_lambda = max(diversity_by_lambda, key=lambda lam: diversity_by_lambda[lam])
     print(f"\nUsing lambda={figure_lambda} (most three-way-mixed) for Figures 1 and 3.\n")
 
     # --- Figure 1: Pareto frontier, all 7 policies ---
@@ -285,12 +287,30 @@ def main() -> None:
     os_stds = [np.std(gain_table[lam][0]) for lam in meaningful_lambdas]
     seq_means = [np.mean(gain_table[lam][1]) for lam in meaningful_lambdas]
     seq_stds = [np.std(gain_table[lam][1]) for lam in meaningful_lambdas]
-    ax.errorbar(meaningful_lambdas, os_means, yerr=os_stds, marker="*", linestyle="-", label="one_shot", capsize=3)
-    ax.errorbar(meaningful_lambdas, seq_means, yerr=seq_stds, marker="P", linestyle="--", label="sequential", capsize=3)
+    ax.errorbar(
+        meaningful_lambdas,
+        os_means,
+        yerr=os_stds,
+        marker="*",
+        linestyle="-",
+        label="one_shot",
+        capsize=3,
+    )
+    ax.errorbar(
+        meaningful_lambdas,
+        seq_means,
+        yerr=seq_stds,
+        marker="P",
+        linestyle="--",
+        label="sequential",
+        capsize=3,
+    )
     ax.set_xscale("log")
     ax.set_xlabel("lambda (log scale)")
     ax.set_ylabel("gain fraction (0=best fixed, 1=oracle)")
-    ax.set_title("Gain fraction vs lambda, with CV error bars\n(only lambdas with >=5% oracle headroom shown)")
+    ax.set_title(
+        "Gain fraction vs lambda, with CV error bars\n(only lambdas with >=5% oracle headroom shown)"
+    )
     ax.axhline(0, color="grey", linewidth=0.5)
     ax.legend()
     ax.grid(True, alpha=0.3)
@@ -321,7 +341,9 @@ def main() -> None:
             train_metrics, train_tightness, figure_lambda, bucket_s1, bucket_s2, MIN_BUCKET_SIZE
         )
         for i in test_idx:
-            result = apply_sequential_policy(metrics_list[i], tightness_list[i], tables, figure_lambda)
+            result = apply_sequential_policy(
+                metrics_list[i], tightness_list[i], tables, figure_lambda
+            )
             ab_gap[i] = result.gap
             ab_time[i] = result.total_time
 
@@ -375,22 +397,23 @@ def main() -> None:
     # "Flat" = the best cheap method is already near-optimal (small gap to
     # exact); "steep" = both cheap methods are far off, exact is essential.
     best_cheap_gap = np.minimum(gaps["greedy"], gaps["medium"])
-    feasible_cheap = np.array(
-        [m["greedy"].feasible or m["medium"].feasible for m in metrics_list]
-    )
+    feasible_cheap = np.array([m["greedy"].feasible or m["medium"].feasible for m in metrics_list])
     candidates = np.where(feasible_cheap)[0]
     flat_idx = candidates[np.argmin(best_cheap_gap[candidates])]
     steep_idx = candidates[np.argmax(best_cheap_gap[candidates])]
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=False)
-    for ax, idx, label in [(axes[0], flat_idx, "flat frontier"), (axes[1], steep_idx, "steep frontier")]:
-        pts = [(times[r][idx], gaps[r][idx], r) for r in RUNG_NAMES]
+    for ax, idx, label in [
+        (axes[0], flat_idx, "flat frontier"),
+        (axes[1], steep_idx, "steep frontier"),
+    ]:
+        pts = [(float(times[r][idx]), float(gaps[r][idx]), r) for r in RUNG_NAMES]
         pts.sort(key=lambda p: p[0])
         xs = [p[0] for p in pts]
         ys = [p[1] for p in pts]
         ax.plot(xs, ys, marker="o", linestyle="-", color="#4c72b0")
-        for t, g, r in pts:
-            ax.annotate(r, (t, g), textcoords="offset points", xytext=(5, 5))
+        for pt_time, pt_gap, pt_rung in pts:
+            ax.annotate(pt_rung, (pt_time, pt_gap), textcoords="offset points", xytext=(5, 5))
         ax.set_xscale("log")
         ax.set_xlabel("solve time (s, log scale)")
         ax.set_ylabel("quality gap")

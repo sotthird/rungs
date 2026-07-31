@@ -3,18 +3,20 @@
 sibling facility_location*.py modules; rungs/core.py never imports this file.
 """
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from rungs.core import Result, Rung
 from rungs.domains.facility_location import FLInstance, generate_instance
 from rungs.domains.facility_location_features import cheap_lower_bound, features
-from rungs.domains.facility_location_solvers import Result, solve_exact, solve_greedy, solve_medium
+from rungs.domains.facility_location_solvers import solve_exact, solve_greedy, solve_medium
 
 
 @dataclass(frozen=True)
 class _SolverRung:
     name: str
-    _solve_fn: Any
+    _solve_fn: Callable[[FLInstance], Result]
 
     def solve(self, instance: FLInstance) -> Result:
         return self._solve_fn(instance)
@@ -58,10 +60,10 @@ class FacilityLocationDomain:
     def features(self, instance: FLInstance) -> dict[str, float]:
         return features(instance)
 
-    def rungs(self) -> list[_SolverRung]:
+    def rungs(self) -> Sequence[Rung]:
         return self._rungs
 
-    def ground_truth_rung(self) -> _SolverRung:
+    def ground_truth_rung(self) -> Rung:
         return self._rungs[-1]
 
     def cheap_lower_bound(self, instance: FLInstance) -> float:

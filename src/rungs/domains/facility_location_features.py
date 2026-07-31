@@ -15,9 +15,7 @@ def cheap_lower_bound(inst: FLInstance) -> float:
     signal for the sequential policy without needing the true optimum, which
     is exactly the number the policy doesn't have without paying for exact.
     """
-    site_cust_dist = np.linalg.norm(
-        inst.site_xy[:, None, :] - inst.cust_xy[None, :, :], axis=-1
-    )
+    site_cust_dist = np.linalg.norm(inst.site_xy[:, None, :] - inst.cust_xy[None, :, :], axis=-1)
     nearest_site_dist = site_cust_dist.min(axis=0)
     transport_lb = float((nearest_site_dist * inst.demand).sum())
     fixed_lb = float(inst.fixed_cost.min())
@@ -32,9 +30,7 @@ def features(inst: FLInstance) -> dict[str, float]:
 
     tightness = capacity.sum() / demand.sum()
 
-    site_cust_dist = np.linalg.norm(
-        inst.site_xy[:, None, :] - inst.cust_xy[None, :, :], axis=-1
-    )
+    site_cust_dist = np.linalg.norm(inst.site_xy[:, None, :] - inst.cust_xy[None, :, :], axis=-1)
     nearest_site_dist = site_cust_dist.min(axis=0)
     mean_transport_cost = nearest_site_dist.mean() * demand.mean()
 

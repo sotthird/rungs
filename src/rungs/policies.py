@@ -41,4 +41,4 @@ class OneShotAllocator:
             rung: self.models[rung].predict(x_row)[0] + lambda_ * self.mean_time[rung]
             for rung in self.rung_names
         }
-        return min(predicted_loss, key=predicted_loss.get)
+        return min(predicted_loss, key=lambda rung: predicted_loss[rung])

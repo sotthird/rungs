@@ -64,9 +64,7 @@ def test_quantile_bucket_assigns_low_mid_high():
 def _make_metrics(greedy_gap, medium_gap, medium_time, exact_time):
     return {
         "greedy": RungMetrics(objective=1.0, feasible=True, gap=greedy_gap, solve_time=0.001),
-        "medium": RungMetrics(
-            objective=1.0, feasible=True, gap=medium_gap, solve_time=medium_time
-        ),
+        "medium": RungMetrics(objective=1.0, feasible=True, gap=medium_gap, solve_time=medium_time),
         "exact": RungMetrics(objective=1.0, feasible=True, gap=0.0, solve_time=exact_time),
     }
 

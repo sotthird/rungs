@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -6,6 +7,7 @@ import numpy as np
 from rungs.policies import OneShotAllocator
 from rungs.sequential import (
     RungMetrics,
+    SequentialTables,
     compute_quantile_thresholds,
     fit_sequential_tables,
     quantile_bucket,
@@ -22,7 +24,8 @@ class Result:
 
 @runtime_checkable
 class Rung(Protocol):
-    name: str
+    @property
+    def name(self) -> str: ...  # read-only: frozen-dataclass implementations are common
 
     def solve(self, instance: Any) -> Result: ...
 
@@ -33,7 +36,7 @@ class Domain(Protocol):
 
     def generate(self, rng: Any, **params: Any) -> Any: ...
     def features(self, instance: Any) -> dict[str, float]: ...
-    def rungs(self) -> list[Rung]: ...
+    def rungs(self) -> Sequence[Rung]: ...
     def ground_truth_rung(self) -> Rung: ...
     def cheap_lower_bound(self, instance: Any) -> float: ...
 
@@ -47,9 +50,7 @@ class AllocationResult:
     feasible: bool
 
 
-def _quality_gap(
-    objective: float | None, feasible: bool, obj_exact: float, sense: str
-) -> float:
+def _quality_gap(objective: float | None, feasible: bool, obj_exact: float, sense: str) -> float:
     """Always >= 0, 0 = optimal, regardless of whether the domain minimizes
     (facility location: cost) or maximizes (knapsack: value)."""
     gap_infeasible = 1.0
@@ -91,7 +92,7 @@ class Allocator:
             "domain.rungs() must end with the ground-truth rung"
         )
         self._one_shot: OneShotAllocator | None = None
-        self._sequential_tables = None
+        self._sequential_tables: SequentialTables | None = None
 
     def fit(self, instances: list[Any]) -> None:
         fit_data = self._solve_all_rungs(instances)
@@ -104,7 +105,8 @@ class Allocator:
             self._feature_keys = feature_keys
             self._one_shot = OneShotAllocator(self._rung_names)
             self._one_shot.fit(
-                np.array(X), {r: np.array(gaps[r]) for r in self._rung_names},
+                np.array(X),
+                {r: np.array(gaps[r]) for r in self._rung_names},
                 {r: np.array(times[r]) for r in self._rung_names},
             )
         else:
@@ -122,7 +124,7 @@ class Allocator:
         out = []
         for inst in instances:
             exact_result = exact_rung.solve(inst)
-            if not exact_result.feasible:
+            if not exact_result.feasible or exact_result.objective is None:
                 continue
             metrics = {}
             for rung in domain_rungs:
@@ -174,6 +176,7 @@ class Allocator:
         return self._solve_sequential(instance)
 
     def _solve_one_shot(self, instance: Any) -> AllocationResult:
+        assert self._one_shot is not None, "call fit() before solve()"
         feats = self.domain.features(instance)
         x = np.array([feats[k] for k in self._feature_keys])
         chosen_name = self._one_shot.choose(x, self.lambda_)
@@ -188,6 +191,7 @@ class Allocator:
         )
 
     def _solve_sequential(self, instance: Any) -> AllocationResult:
+        assert self._sequential_tables is not None, "call fit() before solve()"
         rungs_by_name = {r.name: r for r in self.domain.rungs()}
         lb = self.domain.cheap_lower_bound(instance)
         attempted: list[str] = []
@@ -209,12 +213,17 @@ class Allocator:
             if stage_name == self._exact_name:
                 break
 
-            decisions = self._sequential_tables.s1_decisions if len(attempted) == 1 else self._sequential_tables.s2_decisions
+            decisions = (
+                self._sequential_tables.s1_decisions
+                if len(attempted) == 1
+                else self._sequential_tables.s2_decisions
+            )
             bucket_fn = self._bucket_s1 if len(attempted) == 1 else self._bucket_s2
             bucket = bucket_fn(metrics, lb)
             if decisions.get(bucket, "escalate") == "accept":
                 break
 
+        assert last_result is not None  # loop always runs at least once
         return AllocationResult(
             rung_used=attempted[-1],
             rungs_attempted=attempted,

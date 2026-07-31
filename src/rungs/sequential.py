@@ -57,8 +57,7 @@ def _resolve_with_merge(raw_labels: list[str], min_bucket_size: int) -> dict[str
     for label in raw_labels:
         counts[label] = counts.get(label, 0) + 1
     return {
-        label: label if count >= min_bucket_size else _MERGED_KEY
-        for label, count in counts.items()
+        label: label if count >= min_bucket_size else _MERGED_KEY for label, count in counts.items()
     }
 
 
