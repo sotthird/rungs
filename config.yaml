@@ -1,0 +1,14 @@
+seed: 20260731
+n_instances: 800
+instance:
+  n_sites: 15
+  n_customers: 60
+  tightness_range: [1.02, 2.5]
+  tightness_sampling: log_near_one   # dense near 1.0
+  demand_cv_range: [0.1, 0.8]
+  fixed_transport_ratio_range: [0.2, 5.0]
+quality:
+  gap_infeasible: 1.0
+evaluation:
+  lambda_grid: [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0]   # provisional, revise once from raw rung timings (see IMPLEMENTATION.md §1)
+  cv_folds: 5

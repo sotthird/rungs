@@ -1,37 +1,27 @@
-# project-name
+# rungs
 
-> Replace this line with a short description of your project.
+> Deciding how hard to think about a problem, before thinking about it.
 
-![CI](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/sotthird/rungs/actions/workflows/ci.yml/badge.svg)
 
----
+Instance-adaptive solver selection: predict per-instance solve difficulty from
+cheap, pre-solve features, and route each instance to the cheapest solving
+method ("rung") that reaches acceptable quality — instead of committing one
+fixed method for every instance regardless of how much effort it deserves.
 
-## Using this template
-
-This is a GitHub template repo. To start a new project:
-
-1. Click **"Use this template"** → **"Create a new repository"** on GitHub
-2. Clone your new repo
-3. Run `uv init .` to initialise uv in the existing folder
-4. Run `bash setup-pipeline.sh` to activate local git hooks
-5. Update `pyproject.toml` — set `name`, `description`, and `requires-python`
-6. Replace the CI badge URL above with your repo's URL
+Full writeup, headline plot, and repro command land at the end of the build
+(see project TODO). This README will be filled in per the design spec's
+README skeleton once results exist — no numbers are reported before then.
 
 ---
 
-## Prerequisites
-
-Install these globally with pipx (one-time, not per project):
+## Development
 
 ```bash
-pipx install pre-commit
-pipx install commitizen
-pipx install detect-secrets
+uv sync --group dev        # install runtime + dev dependencies
+bash setup-pipeline.sh     # activate local pre-commit hooks (once, after cloning)
+uv run pytest              # run tests
 ```
-
----
-
-## Pipeline overview
 
 ### Local hooks (run on every `git commit`)
 
@@ -40,20 +30,17 @@ pipx install detect-secrets
 | detect-secrets | Blocks commits containing credentials or secrets |
 | ruff | Lints and auto-fixes Python code |
 | ruff-format | Formats Python code |
-| clang-format | Checks C/C++ formatting |
-| trailing-whitespace | Cleans up trailing whitespace |
+| trailing-whitespace / end-of-file-fixer / check-yaml / check-toml | General hygiene |
 | commitizen | Enforces Conventional Commits message format |
 
 ### GitHub Actions CI (runs on every push and PR)
 
 | Job | What it does |
 |---|---|
-| Lint | ruff + clang-format check |
+| Lint | ruff check + ruff format --check |
 | Type Check | mypy |
 | Security | detect-secrets + pip-audit + Trivy (vuln/misconfig/secret scan) |
 | Tests | pytest |
-
----
 
 ## Commit message format
 
@@ -67,15 +54,7 @@ Types: feat, fix, docs, style, refactor, test, chore, ci
 
 Examples:
 ```
-feat(parser): add support for nested structs
-fix(auth): handle null token on refresh
-chore(deps): bump ruff to v0.5.0
+feat(solvers): add LP-relax-and-round medium rung
+fix(policies): accumulate escalation cost across all rungs run
+chore(deps): bump ruff to v0.17.0
 ```
-
----
-
-## Adding a new language
-
-1. Find the pre-commit hook for the language at [pre-commit.com/hooks](https://pre-commit.com/hooks.html)
-2. Add a block to `.pre-commit-config.yaml`
-3. Add a step to `.github/workflows/ci.yml`
