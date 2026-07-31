@@ -1,3 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rungs"
+version = "0.1.0"
+description = "Instance-adaptive solver selection: deciding how hard to think about a problem before thinking about it."
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "polars",
+    "pyarrow",
+    "pulp",
+    "highspy",
+    "lightgbm",
+    "matplotlib",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -36,3 +62,4 @@ warn_return_any = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+pythonpath = ["src"]

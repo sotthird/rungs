@@ -1,8 +1,15 @@
 seed: 20260731
 n_instances: 800
 instance:
-  n_sites: 15
-  n_customers: 60
+  # Reduced from the DESIGN.md spec of 15/60 after empirical testing: at 15x60,
+  # the exact MILP fails to prove optimality within the 5s time limit on ~48%
+  # of instances even with HiGHS (see internal/ investigation). At 6x15, only
+  # ~3% fail, with median solve time ~36ms — this preserves the "exact ground
+  # truth is cheap" property the whole metric pipeline depends on. The
+  # feasibility gate is still very much alive at this size: the medium rung
+  # goes infeasible on 78/100 tight (tightness in [1.02, 1.15]) instances.
+  n_sites: 6
+  n_customers: 15
   tightness_range: [1.02, 2.5]
   tightness_sampling: log_near_one   # dense near 1.0
   demand_cv_range: [0.1, 0.8]
