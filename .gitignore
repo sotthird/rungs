@@ -5,8 +5,6 @@ __pycache__/
 *.egg-info/
 internal/
 references/
-.secrets.baseline
-.commitizen.yaml
 dist/
 build/
 .mypy_cache/
