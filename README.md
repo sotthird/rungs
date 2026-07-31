@@ -5,24 +5,126 @@
 Optimization systems usually commit to one solving method and apply it to
 every instance. But instances differ enormously in how much effort they
 deserve, and you can't tell which is which without solving them. This
-project predicts per-instance difficulty from features that cost nothing to
-compute, and allocates solver effort accordingly — on capacitated facility
-location, a sequential "run the cheap method, look at what happened, then
-decide whether to escalate" policy cuts mean solve time by **26%** (0.117s →
-0.087s) for a **6.8-point** quality-gap cost, capturing **13–22%** of the
-improvement available to a perfect oracle across the range where compute
-actually costs something.
+project predicts per-instance difficulty from cheap, pre-solve features and
+allocates solver effort accordingly — and, more interestingly, from evidence
+purchased by actually running the cheapest method first and looking at what
+happened.
+
+On capacitated facility location, a sequential "run the cheap method, look
+at what happened, then decide whether to escalate" policy cuts mean solve
+time by **26%** (0.117s → 0.087s) for a **6.8-point** quality-gap cost,
+capturing **13–22%** of the improvement available to a perfect oracle across
+the range where compute actually costs something.
 
 This is not a new idea — **algorithm selection** was formalized by Rice
 (1976); the best-known success is **SATzilla**, which won SAT competitions
 predicting per-instance solver runtime from cheap features. The theoretical
 frame for "is more thinking worth it" is Russell & Wefald's rational
 metareasoning. What's here: sequential escalation solved by backward
-induction rather than learned, an oracle-bounded metric (gain fraction, never
-an unbounded "X% better"), and an ablation isolating the value of evidence
-purchased by running the cheap method first.
+induction rather than learned, an oracle-bounded metric (gain fraction,
+never an unbounded "X% better"), and an ablation isolating the value of
+evidence purchased by running the cheap method first.
 
-![Pareto frontier](figures/fig1_pareto_all_policies.png)
+## Results
+
+<table>
+<tr>
+<td width="50%">
+
+**All 7 policies, at the λ where escalation decisions are most mixed.**
+The fixed baselines span the tradeoff — `always_exact` is perfect but
+slowest, `always_greedy`/`always_medium` are fast but far worse.
+`sequential` and `one_shot` land in between; `oracle` is the impossible
+ceiling, knowing the right method per instance in hindsight.
+
+<img src="figures/fig1_pareto_all_policies.png" alt="Pareto frontier" width="100%">
+
+</td>
+<td width="50%">
+
+**How much of the oracle's achievable improvement each policy actually
+captures**, across every λ with real headroom to capture (≥5%, the hour-8
+exploitability threshold — see limitations below for what happens under
+that bar). `sequential` crosses from negative to positive as λ grows and
+compute starts costing something; `one_shot` never does.
+
+<img src="figures/fig2_gain_fraction_vs_lambda.png" alt="Gain fraction vs lambda" width="100%">
+
+</td>
+</tr>
+</table>
+
+### The three rungs
+
+Capacitated facility location: choose which sites to open and assign every
+customer to an open site, minimizing fixed opening costs plus transport
+cost, subject to per-site capacity. $f_i$ = fixed cost of site $i$, $c_{ij}$
+= transport cost from site $i$ to customer $j$, $d_j$ = demand of customer
+$j$, $s_i$ = capacity of site $i$.
+
+**Exact** — mixed-integer program, solved to proven optimality:
+
+$$
+\min_{x,\,y} \; \sum_i f_i y_i + \sum_{i,j} c_{ij} x_{ij}
+$$
+
+$$
+\text{s.t.} \quad \sum_i x_{ij} = 1 \;\; \forall j, \qquad
+\sum_j d_j x_{ij} \le s_i y_i \;\; \forall i, \qquad
+x_{ij}, y_i \in \{0, 1\}
+$$
+
+**Medium** — solve the LP relaxation ($x_{ij}, y_i \in [0,1]$), round the
+open/close decision, then greedily reassign customers to open sites:
+
+$$
+\hat{y}_i = \mathbb{1}\!\left[y_i^{\text{LP}} \ge 0.5\right]
+$$
+
+**Greedy** — open sites by cost-benefit ratio until capacity covers demand,
+then assign each customer to the nearest open site with room:
+
+$$
+\text{score}_i = \frac{s_i}{f_i + \bar{c}_i}
+$$
+
+where $\bar{c}_i$ is the mean transport cost from site $i$ to the
+currently unserved customers.
+
+## Reproduce everything
+
+```bash
+./run_all.sh
+```
+
+Installs dependencies, runs the test suite, solves 800 facility-location
+instances across 3 methods once, evaluates both policies via 5-fold
+cross-validation, regenerates every figure in `figures/`, and runs the
+lightweight knapsack pipeline proving the same library works on a second
+domain. Takes a few minutes, dominated by the exact MILP solves.
+
+## What's here
+
+```
+config.yaml                 # pre-registered constants: seed, lambda grid, gap penalty
+src/rungs/                  # the library
+  core.py                   #   Rung / Domain protocols, Allocator (plug in a new domain here)
+  policies.py                #   one-shot selector (LightGBM regression per rung)
+  sequential.py               #   tabular backward induction for the sequential policy
+  evaluate.py                  #   quality_gap, loss, gain_fraction
+  domains/
+    facility_location*.py       # primary domain: capacitated facility location
+    knapsack*.py                 # second domain, proving the plugin interface
+src/scripts/                # drivers
+  precompute.py               #   solve everything once, build data/cache.parquet
+  evaluate_one_shot.py          #   one-shot CV + first Pareto plot
+  evaluate_sequential.py         #   sequential CV + cost-accounting check + ablation
+  generate_figures.py             #   the full lambda sweep and all 5 figures
+  run_knapsack_pipeline.py          #   full pipeline + 2 figures for the second domain
+tests/                      # 41 tests, TDD throughout
+figures/                    # generated plots
+internal/                   # design doc, implementation guide, build-order TODO
+```
 
 ## Honest limitations
 
@@ -46,14 +148,14 @@ Read this before the numbers above impress you more than they should.
   treatment**: correctness-tested, proven to plug into the same `Allocator`
   machinery with one small, genuine generalization required (a `sense`
   field, since knapsack maximizes value while facility location minimizes
-  cost), and has its own Pareto and gain-fraction figures (`figures/
-  knapsack_*.png`) — but no 5-fold cross-validation, just a single
+  cost), and has its own Pareto and gain-fraction figures
+  (`figures/knapsack_*.png`) — but no 5-fold cross-validation, just a single
   train/test split. Its own pipeline also surfaced a new limitation: at
   microsecond solve times, wall-clock timing noise (~50% relative stdev)
-  makes some cross-policy time comparisons unreliable, and one lambda
-  (10,000) produces a gain fraction above 1 — logically impossible for a
-  metric bounded by the oracle, and excluded from the headline figure for
-  exactly that reason.
+  makes some cross-policy time comparisons unreliable, and one λ (10,000)
+  produces a gain fraction above 1 — logically impossible for a metric
+  bounded by the oracle, and excluded from the headline figure for exactly
+  that reason.
 - **Three of the four analysis scripts are not yet "thin drivers"** over the
   `rungs` library — only `precompute.py` was refactored to route solving
   through `Domain.rungs()`; `evaluate_one_shot.py`, `evaluate_sequential.py`,
@@ -61,51 +163,6 @@ Read this before the numbers above impress you more than they should.
 - Three fixed rungs, not a continuous effort dial. The sequential policy is
   optimal only for the *discretized* state; discretization loss is
   unquantified.
-
-## Reproduce everything
-
-```bash
-./run_all.sh
-```
-
-Installs dependencies, runs the test suite, solves 800 facility-location
-instances across 3 methods once, evaluates both policies via 5-fold
-cross-validation, regenerates every figure in `figures/`, and runs the
-lightweight knapsack pipeline proving the same library works on a second
-domain. Takes a few minutes, dominated by the exact MILP solves.
-
-## The idea, in three sentences
-
-Every practical optimization system applies one solving method to every
-instance, wasting effort on easy cases and giving up too early on hard ones.
-The difficulty is that you can't observe how hard an instance is without
-paying to solve it. This project predicts effort allocation from cheap,
-pre-solve features instead — and, more interestingly, from evidence
-purchased by actually running the cheapest method first and looking at what
-happened.
-
-## What's here
-
-```
-config.yaml             # pre-registered constants: seed, lambda grid, gap penalty
-src/rungs/               # the library
-  core.py                #   Rung / Domain protocols, Allocator (plug in a new domain here)
-  policies.py             #   one-shot selector (LightGBM regression per rung)
-  sequential.py            #   tabular backward induction for the sequential policy
-  evaluate.py               #   quality_gap, loss, gain_fraction
-  domains/
-    facility_location*.py    # primary domain: capacitated facility location
-    knapsack*.py               # second domain, proving the plugin interface
-src/scripts/             # drivers
-  precompute.py            #   solve everything once, build data/cache.parquet
-  evaluate_one_shot.py       #   one-shot CV + first Pareto plot
-  evaluate_sequential.py       #   sequential CV + cost-accounting check + ablation
-  generate_figures.py            #   the full lambda sweep and all 5 figures
-  run_knapsack_pipeline.py         #   full pipeline + 2 figures for the second domain
-tests/                  # 41 tests, TDD throughout
-figures/                # generated plots
-internal/               # design doc, implementation guide, build-order TODO
-```
 
 ## Future work
 
@@ -116,48 +173,3 @@ internal/               # design doc, implementation guide, build-order TODO
 - A real write-up (`paper/paper.pdf` in the original design) — this README
   is currently the only narrative document.
 
----
-
-## Development
-
-```bash
-uv sync --group dev        # install runtime + dev dependencies
-pre-commit install         # activate local pre-commit hooks (once, after cloning)
-uv run pytest              # run tests
-```
-
-### Local hooks (run on every `git commit`)
-
-| Hook | What it does |
-|---|---|
-| detect-secrets | Blocks commits containing credentials or secrets |
-| ruff | Lints and auto-fixes Python code |
-| ruff-format | Formats Python code |
-| trailing-whitespace / end-of-file-fixer / check-yaml / check-toml | General hygiene |
-| commitizen | Enforces Conventional Commits message format |
-
-### GitHub Actions CI (runs on every push and PR)
-
-| Job | What it does |
-|---|---|
-| Lint | ruff check + ruff format --check |
-| Type Check | mypy |
-| Security | detect-secrets + pip-audit + Trivy (vuln/misconfig/secret scan) |
-| Tests | pytest |
-
-## Commit message format
-
-This repo uses [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-<type>(<scope>): <description>
-
-Types: feat, fix, docs, style, refactor, test, chore, ci
-```
-
-Examples:
-```
-feat(solvers): add LP-relax-and-round medium rung
-fix(policies): accumulate escalation cost across all rungs run
-chore(deps): bump ruff to v0.17.0
-```
